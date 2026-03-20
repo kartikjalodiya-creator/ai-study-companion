@@ -1,0 +1,29 @@
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { AppSidebar } from "@/components/AppSidebar";
+import { Globe } from "lucide-react";
+import { Button } from "@/components/ui/button";
+
+export function AppLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <SidebarProvider>
+      <div className="min-h-screen flex w-full">
+        <AppSidebar />
+        <div className="flex-1 flex flex-col min-w-0">
+          <header className="h-14 flex items-center justify-between border-b border-border px-4 shrink-0">
+            <SidebarTrigger className="text-muted-foreground hover:text-foreground" />
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" className="text-muted-foreground gap-1">
+                <Globe className="w-4 h-4" />
+                <span className="hidden sm:inline text-xs">EN</span>
+              </Button>
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-xs font-bold text-primary-foreground">
+                S
+              </div>
+            </div>
+          </header>
+          <main className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
+        </div>
+      </div>
+    </SidebarProvider>
+  );
+}
