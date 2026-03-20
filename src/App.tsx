@@ -25,21 +25,23 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <AppLayout>
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/planner" element={<PlannerPage />} />
-            <Route path="/assistant" element={<AssistantPage />} />
-            <Route path="/subjects" element={<SubjectsPage />} />
-            <Route path="/analytics" element={<AnalyticsPage />} />
-            <Route path="/gamification" element={<GamificationPage />} />
-            <Route path="/focus" element={<FocusPage />} />
-            <Route path="/notes" element={<NotesPage />} />
-            <Route path="/groups" element={<GroupsPage />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </AppLayout>
+        <SubjectsProvider>
+          <AppLayout>
+            <Routes>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/planner" element={<PlannerPage />} />
+              <Route path="/assistant" element={<AssistantPage />} />
+              <Route path="/subjects" element={<SubjectsPage />} />
+              <Route path="/analytics" element={<AnalyticsPage />} />
+              <Route path="/gamification" element={<GamificationPage />} />
+              <Route path="/focus" element={<FocusPage />} />
+              <Route path="/notes" element={<NotesPage />} />
+              <Route path="/groups" element={<GroupsPage />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </AppLayout>
+        </SubjectsProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
