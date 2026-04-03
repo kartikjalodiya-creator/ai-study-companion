@@ -1,7 +1,7 @@
 import { GlassCard } from "@/components/GlassCard";
-import { BookOpen, ChevronRight, Plus, Trash2 } from "lucide-react";
+import { BookOpen, ChevronDown, ChevronRight, Plus, Trash2, CheckCircle2, Circle } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -25,12 +25,12 @@ const colorPalettes = [
 ];
 
 export default function SubjectsPage() {
-  const { subjects, addSubject, removeSubject } = useSubjects();
+  const { subjects, addSubject, removeSubject, toggleTopic } = useSubjects();
   const [filter, setFilter] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [newName, setNewName] = useState("");
-  const [newTopics, setNewTopics] = useState("10");
   const [newIcon, setNewIcon] = useState("📚");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const filtered = subjects.filter((s) =>
     s.name.toLowerCase().includes(filter.toLowerCase())
@@ -41,13 +41,10 @@ export default function SubjectsPage() {
     addSubject({
       name: newName.trim(),
       icon: newIcon,
-      topics: parseInt(newTopics) || 10,
-      completed: 0,
       examDate: "",
       hoursPerDay: "1",
     });
     setNewName("");
-    setNewTopics("10");
     setNewIcon("📚");
     setShowForm(false);
   };
@@ -78,24 +75,18 @@ export default function SubjectsPage() {
       {showForm && (
         <GlassCard delay={0}>
           <h3 className="font-display font-semibold text-foreground mb-3">New Subject</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+          <p className="text-xs text-muted-foreground mb-3">
+            Enter a subject name (e.g. Physics, Chemistry, Mathematics) and we'll auto-generate all topics for you!
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
             <div>
-              <Label className="text-xs text-muted-foreground">Name</Label>
+              <Label className="text-xs text-muted-foreground">Subject Name</Label>
               <Input
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                placeholder="e.g. Physics"
+                placeholder="e.g. Physics, Chemistry, Biology..."
                 className="bg-muted/30 border-border"
-              />
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Total Topics</Label>
-              <Input
-                type="number"
-                min="1"
-                value={newTopics}
-                onChange={(e) => setNewTopics(e.target.value)}
-                className="bg-muted/30 border-border"
+                onKeyDown={(e) => e.key === "Enter" && handleAdd()}
               />
             </div>
             <div>
@@ -126,7 +117,7 @@ export default function SubjectsPage() {
             <BookOpen className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
             <p className="text-foreground font-medium mb-1">No subjects yet</p>
             <p className="text-sm text-muted-foreground mb-4">
-              Add your first subject to start tracking your study progress.
+              Add your first subject to start tracking your study progress. Topics will be auto-generated!
             </p>
             <Button variant="hero" size="sm" onClick={() => setShowForm(true)}>
               <Plus className="w-4 h-4 mr-1" /> Add Your First Subject
@@ -136,47 +127,90 @@ export default function SubjectsPage() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filtered.map((subject, i) => (
-          <GlassCard
-            key={subject.id}
-            delay={i * 0.1}
-            className="group hover:border-primary/30 transition-all"
-          >
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
+        {filtered.map((subject, i) => {
+          const isExpanded = expandedId === subject.id;
+          const pct = subject.topics > 0 ? Math.round((subject.completed / subject.topics) * 100) : 0;
+          return (
+            <GlassCard
+              key={subject.id}
+              delay={i * 0.1}
+              className="group hover:border-primary/30 transition-all"
+            >
+              <div className="flex items-center justify-between mb-4">
                 <div
-                  className={`w-12 h-12 rounded-xl bg-gradient-to-br ${colorPalettes[i % colorPalettes.length]} flex items-center justify-center text-2xl`}
+                  className="flex items-center gap-3 cursor-pointer flex-1"
+                  onClick={() => setExpandedId(isExpanded ? null : subject.id)}
                 >
-                  {subject.icon}
+                  <div
+                    className={`w-12 h-12 rounded-xl bg-gradient-to-br ${colorPalettes[i % colorPalettes.length]} flex items-center justify-center text-2xl`}
+                  >
+                    {subject.icon}
+                  </div>
+                  <div>
+                    <h3 className="font-display font-semibold text-foreground">
+                      {subject.name}
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      {subject.topics} topics • {pct}% done
+                    </p>
+                  </div>
+                  {isExpanded ? (
+                    <ChevronDown className="w-4 h-4 text-muted-foreground ml-auto" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4 text-muted-foreground ml-auto" />
+                  )}
                 </div>
-                <div>
-                  <h3 className="font-display font-semibold text-foreground">
-                    {subject.name}
-                  </h3>
-                  <p className="text-xs text-muted-foreground">
-                    {subject.topics} topics
-                  </p>
-                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => removeSubject(subject.id)}
+                  className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity ml-2"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => removeSubject(subject.id)}
-                className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                <Trash2 className="w-4 h-4" />
-              </Button>
-            </div>
-            <Progress
-              value={(subject.completed / subject.topics) * 100}
-              className="h-2 mb-2"
-            />
-            <p className="text-xs text-muted-foreground">
-              {subject.completed}/{subject.topics} topics completed •{" "}
-              {Math.round((subject.completed / subject.topics) * 100 || 0)}% mastery
-            </p>
-          </GlassCard>
-        ))}
+              <Progress value={pct} className="h-2 mb-2" />
+              <p className="text-xs text-muted-foreground">
+                {subject.completed}/{subject.topics} topics completed
+              </p>
+
+              <AnimatePresence>
+                {isExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="mt-4 pt-4 border-t border-border space-y-1 max-h-64 overflow-y-auto">
+                      {subject.topicList.map((topic) => (
+                        <button
+                          key={topic.id}
+                          onClick={() => toggleTopic(subject.id, topic.id)}
+                          className={`w-full flex items-center gap-2 p-2 rounded-lg text-left text-sm transition-colors ${
+                            topic.completed
+                              ? "bg-success/10 text-success"
+                              : "hover:bg-muted/30 text-foreground"
+                          }`}
+                        >
+                          {topic.completed ? (
+                            <CheckCircle2 className="w-4 h-4 shrink-0" />
+                          ) : (
+                            <Circle className="w-4 h-4 shrink-0 text-muted-foreground" />
+                          )}
+                          <span className={topic.completed ? "line-through opacity-70" : ""}>
+                            {topic.name}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </GlassCard>
+          );
+        })}
       </div>
     </div>
   );
