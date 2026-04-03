@@ -3,7 +3,7 @@ import { GlassCard } from "@/components/GlassCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CalendarDays, Sparkles, BookOpen } from "lucide-react";
+import { CalendarDays, Sparkles, BookOpen, CheckCircle2, Circle } from "lucide-react";
 import { motion } from "framer-motion";
 import { useSubjects } from "@/contexts/SubjectsContext";
 import { useNavigate } from "react-router-dom";
@@ -11,17 +11,29 @@ import { useNavigate } from "react-router-dom";
 const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 export default function PlannerPage() {
-  const { subjects, updateSubject } = useSubjects();
+  const { subjects, updateSubject, toggleTopic } = useSubjects();
   const navigate = useNavigate();
   const [generated, setGenerated] = useState(false);
 
-  const schedule = daysOfWeek.map((day) => ({
+  // Distribute incomplete topics across the week
+  const incompleteBySub = subjects.map((s) => ({
+    ...s,
+    pending: s.topicList.filter((t) => !t.completed),
+  }));
+
+  const schedule = daysOfWeek.map((day, dayIdx) => ({
     day,
-    tasks: subjects.filter(s => s.name).map((s) => ({
-      subject: s.name,
-      hours: Math.max(0.5, parseFloat(s.hoursPerDay || "1") / 2 + Math.random()),
-      topic: `Review Chapter ${Math.floor(Math.random() * 10 + 1)}`,
-    })),
+    tasks: incompleteBySub
+      .filter((s) => s.pending.length > 0)
+      .map((s) => {
+        const hoursPerDay = Math.max(0.5, parseFloat(s.hoursPerDay || "1"));
+        const topicIdx = dayIdx % s.pending.length;
+        const topic = s.pending[topicIdx];
+        return topic
+          ? { subjectId: s.id, subject: s.name, icon: s.icon, topic, hours: hoursPerDay }
+          : null;
+      })
+      .filter(Boolean) as { subjectId: string; subject: string; icon: string; topic: { id: string; name: string; completed: boolean }; hours: number }[],
   }));
 
   if (subjects.length === 0) {
@@ -63,7 +75,7 @@ export default function PlannerPage() {
             <div key={s.id} className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
               <div>
                 <Label className="text-xs text-muted-foreground">Subject</Label>
-                <Input value={s.name} disabled className="bg-muted/30 border-border" />
+                <Input value={`${s.icon} ${s.name}`} disabled className="bg-muted/30 border-border" />
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">Exam Date</Label>
@@ -98,18 +110,32 @@ export default function PlannerPage() {
       {generated && (
         <GlassCard delay={0.2}>
           <h2 className="font-display font-semibold text-lg mb-4 text-foreground">📅 Weekly Schedule</h2>
+          <p className="text-xs text-muted-foreground mb-4">Click a topic to mark it complete. Your schedule updates automatically!</p>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {schedule.map((day, i) => (
               <motion.div key={day.day} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
                 className="p-4 rounded-lg bg-muted/20 border border-border">
                 <p className="font-display font-semibold text-sm text-primary mb-3">{day.day}</p>
                 <div className="space-y-2">
-                  {day.tasks.map((t, j) => (
-                    <div key={j} className="text-xs p-2 rounded bg-primary/5 border border-primary/10">
-                      <p className="font-medium text-foreground">{t.subject}</p>
-                      <p className="text-muted-foreground">{t.topic} • {t.hours.toFixed(1)}h</p>
-                    </div>
-                  ))}
+                  {day.tasks.length > 0 ? day.tasks.map((t) => (
+                    <button
+                      key={t.topic.id}
+                      onClick={() => toggleTopic(t.subjectId, t.topic.id)}
+                      className={`w-full text-left text-xs p-2 rounded border transition-colors flex items-center gap-2 ${
+                        t.topic.completed
+                          ? "bg-success/10 border-success/20 text-success"
+                          : "bg-primary/5 border-primary/10"
+                      }`}
+                    >
+                      {t.topic.completed ? <CheckCircle2 className="w-3 h-3 shrink-0" /> : <Circle className="w-3 h-3 shrink-0 text-muted-foreground" />}
+                      <div className="flex-1">
+                        <p className="font-medium text-foreground">{t.icon} {t.subject}</p>
+                        <p className={`text-muted-foreground ${t.topic.completed ? "line-through" : ""}`}>{t.topic.name} • {t.hours.toFixed(1)}h</p>
+                      </div>
+                    </button>
+                  )) : (
+                    <p className="text-xs text-muted-foreground text-center py-2">No tasks</p>
+                  )}
                 </div>
               </motion.div>
             ))}

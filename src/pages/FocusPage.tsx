@@ -3,8 +3,18 @@ import { GlassCard } from "@/components/GlassCard";
 import { Button } from "@/components/ui/button";
 import { Timer, Play, Pause, RotateCcw, Music, VolumeX, CheckCircle2 } from "lucide-react";
 import { motion } from "framer-motion";
+import { useSubjects } from "@/contexts/SubjectsContext";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function FocusPage() {
+  const { subjects, addStudyTime } = useSubjects();
+  const [focusDuration, setFocusDuration] = useState(25);
   const [minutes, setMinutes] = useState(25);
   const [seconds, setSeconds] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
@@ -12,10 +22,11 @@ export default function FocusPage() {
   const [sessions, setSessions] = useState(0);
   const [musicOn, setMusicOn] = useState(false);
   const [totalFocusTime, setTotalFocusTime] = useState(0);
+  const [selectedSubject, setSelectedSubject] = useState<string>("general");
   const intervalRef = useRef<ReturnType<typeof setInterval>>();
 
   const totalSeconds = minutes * 60 + seconds;
-  const maxSeconds = isBreak ? 5 * 60 : 25 * 60;
+  const maxSeconds = isBreak ? 5 * 60 : focusDuration * 60;
   const progress = ((maxSeconds - totalSeconds) / maxSeconds) * 100;
 
   useEffect(() => {
@@ -27,12 +38,13 @@ export default function FocusPage() {
               setIsRunning(false);
               if (!isBreak) {
                 setSessions((s) => s + 1);
-                setTotalFocusTime((t) => t + 25);
+                setTotalFocusTime((t) => t + focusDuration);
+                addStudyTime(focusDuration);
                 setIsBreak(true);
                 setMinutes(5);
               } else {
                 setIsBreak(false);
-                setMinutes(25);
+                setMinutes(focusDuration);
               }
               return 0;
             }
@@ -44,10 +56,19 @@ export default function FocusPage() {
       }, 1000);
     }
     return () => clearInterval(intervalRef.current);
-  }, [isRunning, minutes, isBreak]);
+  }, [isRunning, minutes, isBreak, focusDuration, addStudyTime]);
 
-  const reset = () => { setIsRunning(false); setMinutes(isBreak ? 5 : 25); setSeconds(0); };
+  const reset = () => { setIsRunning(false); setMinutes(isBreak ? 5 : focusDuration); setSeconds(0); };
   const pad = (n: number) => n.toString().padStart(2, "0");
+
+  const handleDurationChange = (val: string) => {
+    const dur = parseInt(val);
+    setFocusDuration(dur);
+    if (!isRunning && !isBreak) {
+      setMinutes(dur);
+      setSeconds(0);
+    }
+  };
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -58,12 +79,45 @@ export default function FocusPage() {
         <p className="text-muted-foreground mt-1">Distraction-free study with Pomodoro timer.</p>
       </motion.div>
 
+      {/* Settings */}
+      <GlassCard delay={0.05}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Focus Duration</label>
+            <Select value={String(focusDuration)} onValueChange={handleDurationChange}>
+              <SelectTrigger className="bg-muted/30 border-border">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="15">15 minutes</SelectItem>
+                <SelectItem value="25">25 minutes</SelectItem>
+                <SelectItem value="45">45 minutes</SelectItem>
+                <SelectItem value="60">60 minutes</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Studying</label>
+            <Select value={selectedSubject} onValueChange={setSelectedSubject}>
+              <SelectTrigger className="bg-muted/30 border-border">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="general">General Study</SelectItem>
+                {subjects.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>{s.icon} {s.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </GlassCard>
+
       <GlassCard delay={0.1} className="text-center py-12">
         <p className="text-sm font-display text-muted-foreground mb-2 uppercase tracking-wider">
           {isBreak ? "☕ Break Time" : "📚 Focus Session"}
         </p>
 
-        {/* Timer circle */}
         <div className="relative w-56 h-56 mx-auto mb-8">
           <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
             <circle cx="50" cy="50" r="45" fill="none" stroke="hsl(230 20% 18%)" strokeWidth="4" />
@@ -94,7 +148,6 @@ export default function FocusPage() {
         </div>
       </GlassCard>
 
-      {/* Session summary */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <GlassCard delay={0.2} className="text-center">
           <CheckCircle2 className="w-8 h-8 text-success mx-auto mb-2" />
