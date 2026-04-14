@@ -3,7 +3,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const OPENAI_API_URL = "https://ai-gateway.lovable.dev/openai/v1/chat/completions";
+const OPENAI_API_URL = "https://ai-gateway.lovablecloud.com/openai/v1/chat/completions";
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
