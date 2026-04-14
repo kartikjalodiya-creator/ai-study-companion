@@ -109,12 +109,13 @@ export default function AssistantPage() {
 
     const upsert = (chunk: string) => {
       assistantText += chunk;
+      const currentText = assistantText;
       setMessages((prev) => {
         const last = prev[prev.length - 1];
-        if (last?.role === "assistant" && prev.length > updatedMessages.length) {
-          return prev.map((m, i) => i === prev.length - 1 ? { ...m, content: assistantText } : m);
+        if (last?.role === "assistant") {
+          return [...prev.slice(0, -1), { role: "assistant" as const, content: currentText }];
         }
-        return [...prev.slice(0, -0), { role: "assistant" as const, content: assistantText }];
+        return [...prev, { role: "assistant" as const, content: currentText }];
       });
     };
 
