@@ -155,7 +155,8 @@ export default function AssistantPage() {
         ))}
       </div>
 
-      <GlassCard className="flex-1 overflow-y-auto p-4 space-y-4" ref={scrollRef}>
+      <GlassCard className="flex-1 overflow-hidden p-0">
+        <div ref={scrollRef} className="h-full overflow-y-auto p-4 space-y-4">
         <AnimatePresence>
           {messages.map((msg, i) => (
             <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
