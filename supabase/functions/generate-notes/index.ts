@@ -3,8 +3,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const OPENAI_API_URL = "https://ai-gateway.lovablecloud.com/openai/v1/chat/completions";
-
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -43,11 +41,13 @@ Rules:
 - Use proper markdown formatting in notes
 - Return ONLY valid JSON, no extra text`;
 
-    const response = await fetch(OPENAI_API_URL, {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${LOVABLE_API_KEY}`,
         'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://lovable.dev',
+        'X-Title': 'AI Study Buddy',
       },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
