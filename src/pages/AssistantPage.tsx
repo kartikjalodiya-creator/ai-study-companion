@@ -184,6 +184,7 @@ export default function AssistantPage() {
             </div>
           </div>
         )}
+        </div>
       </GlassCard>
 
       <div className="flex gap-2">
