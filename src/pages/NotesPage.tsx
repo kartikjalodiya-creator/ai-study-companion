@@ -1,30 +1,127 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { GlassCard } from "@/components/GlassCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { FileText, Upload, Youtube, Sparkles, BookOpen, CreditCard, List } from "lucide-react";
+import { FileText, Upload, Youtube, Sparkles, BookOpen, CreditCard, List, Loader2, X } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { motion } from "framer-motion";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
-const sampleNotes = [
-  "**Newton's Laws of Motion**\n\n1. **First Law (Inertia):** An object at rest stays at rest, and an object in motion stays in motion unless acted upon by an external force.\n\n2. **Second Law:** F = ma. Force equals mass times acceleration.\n\n3. **Third Law:** For every action, there is an equal and opposite reaction.",
-];
+interface Flashcard {
+  q: string;
+  a: string;
+}
 
-const sampleFlashcards = [
-  { q: "What is Newton's First Law?", a: "An object at rest stays at rest unless acted upon by an external force." },
-  { q: "What is the formula for Force?", a: "F = ma (Force = mass × acceleration)" },
-  { q: "What does the Third Law state?", a: "For every action, there is an equal and opposite reaction." },
-];
+interface GeneratedContent {
+  notes: string[];
+  flashcards: Flashcard[];
+  summary: string[];
+}
 
 export default function NotesPage() {
   const [url, setUrl] = useState("");
-  const [generated, setGenerated] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [content, setContent] = useState<GeneratedContent | null>(null);
   const [flippedCards, setFlippedCards] = useState<Set<number>>(new Set());
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
 
   const toggleFlip = (i: number) => {
     const next = new Set(flippedCards);
     if (next.has(i)) next.delete(i); else next.add(i);
     setFlippedCards(next);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && file.type === "application/pdf") {
+      setPdfFile(file);
+    } else {
+      toast({ title: "Invalid file", description: "Please upload a PDF file.", variant: "destructive" });
+    }
+  };
+
+  const extractPdfText = async (file: File): Promise<string> => {
+    const arrayBuffer = await file.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    // Simple text extraction from PDF binary
+    let text = "";
+    let inStream = false;
+    let streamContent = "";
+    const decoder = new TextDecoder("utf-8", { fatal: false });
+    const raw = decoder.decode(bytes);
+
+    // Extract text between BT and ET operators, and stream content
+    const lines = raw.split("\n");
+    for (const line of lines) {
+      if (line.includes("stream")) inStream = true;
+      if (inStream) streamContent += line + " ";
+      if (line.includes("endstream")) {
+        inStream = false;
+        // Extract readable text from stream
+        const readable = streamContent.replace(/[^\x20-\x7E\n]/g, " ").replace(/\s+/g, " ").trim();
+        if (readable.length > 20) text += readable + "\n";
+        streamContent = "";
+      }
+    }
+
+    // Fallback: extract any readable strings
+    if (text.trim().length < 100) {
+      text = raw.replace(/[^\x20-\x7E\n]/g, " ").replace(/\s+/g, " ").trim();
+    }
+
+    return text.slice(0, 15000);
+  };
+
+  const handleGenerate = async () => {
+    if (!pdfFile && !url.trim()) {
+      toast({ title: "No input", description: "Please upload a PDF or paste a URL.", variant: "destructive" });
+      return;
+    }
+
+    setLoading(true);
+    setContent(null);
+    setFlippedCards(new Set());
+
+    try {
+      let textContent = "";
+      let sourceType = "url";
+
+      if (pdfFile) {
+        sourceType = "pdf";
+        textContent = await extractPdfText(pdfFile);
+        if (textContent.trim().length < 50) {
+          toast({ title: "Could not extract text", description: "The PDF might be scanned/image-based. Try a text-based PDF.", variant: "destructive" });
+          setLoading(false);
+          return;
+        }
+      } else {
+        textContent = `Please analyze and generate study materials from this URL: ${url.trim()}. Extract the main educational content and concepts from it.`;
+      }
+
+      const { data, error } = await supabase.functions.invoke("generate-notes", {
+        body: { content: textContent, sourceType },
+      });
+
+      if (error) throw error;
+
+      if (data.error) throw new Error(data.error);
+
+      setContent({
+        notes: data.notes || [],
+        flashcards: data.flashcards || [],
+        summary: data.summary || [],
+      });
+
+      toast({ title: "Notes generated!", description: "Your study materials are ready." });
+    } catch (err: any) {
+      console.error("Generation error:", err);
+      toast({ title: "Generation failed", description: err.message || "Something went wrong.", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -33,46 +130,69 @@ export default function NotesPage() {
         <h1 className="text-2xl md:text-3xl font-display font-bold text-foreground flex items-center gap-2">
           <FileText className="w-7 h-7 text-primary" /> Notes & Summary Tool
         </h1>
-        <p className="text-muted-foreground mt-1">Upload PDFs or paste YouTube links to generate smart notes.</p>
+        <p className="text-muted-foreground mt-1">Upload PDFs or paste YouTube links to generate smart notes with AI.</p>
       </motion.div>
 
       <GlassCard delay={0.1}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="p-6 border border-dashed border-border rounded-xl text-center hover:border-primary/40 transition-colors cursor-pointer">
-            <Upload className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-            <p className="font-display font-semibold text-foreground text-sm">Upload PDF</p>
-            <p className="text-xs text-muted-foreground mt-1">Drag & drop or click to browse</p>
+          <div
+            onClick={() => fileInputRef.current?.click()}
+            className="p-6 border border-dashed border-border rounded-xl text-center hover:border-primary/40 transition-colors cursor-pointer"
+          >
+            <input ref={fileInputRef} type="file" accept=".pdf" className="hidden" onChange={handleFileSelect} />
+            {pdfFile ? (
+              <div className="flex flex-col items-center gap-2">
+                <FileText className="w-10 h-10 text-primary mx-auto" />
+                <p className="font-display font-semibold text-foreground text-sm">{pdfFile.name}</p>
+                <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setPdfFile(null); }}>
+                  <X className="w-3 h-3 mr-1" /> Remove
+                </Button>
+              </div>
+            ) : (
+              <>
+                <Upload className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+                <p className="font-display font-semibold text-foreground text-sm">Upload PDF</p>
+                <p className="text-xs text-muted-foreground mt-1">Click to browse</p>
+              </>
+            )}
           </div>
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <Youtube className="w-5 h-5 text-destructive shrink-0" />
-              <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Paste YouTube URL..." className="bg-muted/30 border-border" />
+              <Input
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="Paste YouTube or any URL..."
+                className="bg-muted/30 border-border"
+                disabled={!!pdfFile}
+              />
             </div>
-            <Button variant="hero" className="w-full" onClick={() => setGenerated(true)}>
-              <Sparkles className="w-4 h-4 mr-2" /> Generate Notes
+            <Button variant="hero" className="w-full" onClick={handleGenerate} disabled={loading}>
+              {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+              {loading ? "Generating..." : "Generate Notes"}
             </Button>
           </div>
         </div>
       </GlassCard>
 
-      {generated && (
+      {content && (
         <GlassCard delay={0.2}>
           <Tabs defaultValue="notes">
             <TabsList className="bg-muted/30 mb-4">
-              <TabsTrigger value="notes" className="data-[state=active]:bg-primary/20 gap-1"><BookOpen className="w-4 h-4" /> Notes</TabsTrigger>
-              <TabsTrigger value="flashcards" className="data-[state=active]:bg-primary/20 gap-1"><CreditCard className="w-4 h-4" /> Flashcards</TabsTrigger>
+              <TabsTrigger value="notes" className="data-[state=active]:bg-primary/20 gap-1"><BookOpen className="w-4 h-4" /> Notes ({content.notes.length})</TabsTrigger>
+              <TabsTrigger value="flashcards" className="data-[state=active]:bg-primary/20 gap-1"><CreditCard className="w-4 h-4" /> Flashcards ({content.flashcards.length})</TabsTrigger>
               <TabsTrigger value="summary" className="data-[state=active]:bg-primary/20 gap-1"><List className="w-4 h-4" /> Summary</TabsTrigger>
             </TabsList>
 
             <TabsContent value="notes" className="space-y-3">
-              {sampleNotes.map((note, i) => (
+              {content.notes.map((note, i) => (
                 <div key={i} className="p-4 rounded-lg bg-muted/20 text-sm text-foreground/80 whitespace-pre-wrap">{note}</div>
               ))}
             </TabsContent>
 
             <TabsContent value="flashcards">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {sampleFlashcards.map((card, i) => (
+                {content.flashcards.map((card, i) => (
                   <motion.div key={i} onClick={() => toggleFlip(i)}
                     className="p-4 rounded-xl bg-muted/20 border border-border cursor-pointer min-h-[120px] flex items-center justify-center text-center hover:border-primary/30 transition-colors">
                     <p className="text-sm text-foreground">
@@ -88,10 +208,9 @@ export default function NotesPage() {
               <div className="p-4 rounded-lg bg-muted/20 text-sm text-foreground/80">
                 <p className="font-display font-semibold mb-2 text-foreground">Key Takeaways:</p>
                 <ul className="space-y-2 list-disc list-inside">
-                  <li>Newton's three laws form the foundation of classical mechanics</li>
-                  <li>F = ma is the most commonly used equation in physics problems</li>
-                  <li>Action-reaction pairs always act on different objects</li>
-                  <li>Inertia explains why seatbelts are necessary in vehicles</li>
+                  {content.summary.map((point, i) => (
+                    <li key={i}>{point}</li>
+                  ))}
                 </ul>
               </div>
             </TabsContent>
