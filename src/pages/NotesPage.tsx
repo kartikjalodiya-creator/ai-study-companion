@@ -7,6 +7,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { motion } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import * as pdfjsLib from "pdfjs-dist";
+
+// Set the worker source
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 
 interface Flashcard {
   q: string;
@@ -45,33 +49,16 @@ export default function NotesPage() {
 
   const extractPdfText = async (file: File): Promise<string> => {
     const arrayBuffer = await file.arrayBuffer();
-    const bytes = new Uint8Array(arrayBuffer);
-    // Simple text extraction from PDF binary
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     let text = "";
-    let inStream = false;
-    let streamContent = "";
-    const decoder = new TextDecoder("utf-8", { fatal: false });
-    const raw = decoder.decode(bytes);
-
-    // Extract text between BT and ET operators, and stream content
-    const lines = raw.split("\n");
-    for (const line of lines) {
-      if (line.includes("stream")) inStream = true;
-      if (inStream) streamContent += line + " ";
-      if (line.includes("endstream")) {
-        inStream = false;
-        // Extract readable text from stream
-        const readable = streamContent.replace(/[^\x20-\x7E\n]/g, " ").replace(/\s+/g, " ").trim();
-        if (readable.length > 20) text += readable + "\n";
-        streamContent = "";
-      }
+    for (let i = 1; i <= Math.min(pdf.numPages, 30); i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const pageText = content.items
+        .map((item: any) => item.str)
+        .join(" ");
+      text += pageText + "\n\n";
     }
-
-    // Fallback: extract any readable strings
-    if (text.trim().length < 100) {
-      text = raw.replace(/[^\x20-\x7E\n]/g, " ").replace(/\s+/g, " ").trim();
-    }
-
     return text.slice(0, 15000);
   };
 
@@ -106,7 +93,6 @@ export default function NotesPage() {
       });
 
       if (error) throw error;
-
       if (data.error) throw new Error(data.error);
 
       setContent({
