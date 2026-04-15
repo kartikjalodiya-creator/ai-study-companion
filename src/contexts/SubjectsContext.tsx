@@ -1,4 +1,6 @@
-import { createContext, useContext, useState, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "./AuthContext";
 
 export interface Topic {
   id: string;
@@ -27,6 +29,7 @@ interface SubjectsContextType {
   streak: number;
   studyLog: { date: string; minutes: number }[];
   addStudyTime: (minutes: number) => void;
+  loading: boolean;
 }
 
 const SubjectsContext = createContext<SubjectsContextType | null>(null);
@@ -134,101 +137,256 @@ const subjectTopics: Record<string, string[]> = {
   ],
 };
 
-function getTopicsForSubject(name: string): Topic[] {
+function getTopicNamesForSubject(name: string): string[] {
   const key = name.toLowerCase().trim();
   const matched = Object.keys(subjectTopics).find(
     (k) => key.includes(k) || k.includes(key)
   );
-  if (matched) {
-    return subjectTopics[matched].map((t) => ({
-      id: crypto.randomUUID(),
-      name: t,
-      completed: false,
-    }));
-  }
-  // Generic fallback topics
-  const count = 15;
-  return Array.from({ length: count }, (_, i) => ({
-    id: crypto.randomUUID(),
-    name: `${name} – Topic ${i + 1}`,
-    completed: false,
-  }));
+  if (matched) return subjectTopics[matched];
+  return Array.from({ length: 15 }, (_, i) => `${name} – Topic ${i + 1}`);
 }
 
 export function SubjectsProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
   const [subjects, setSubjects] = useState<UserSubject[]>([]);
   const [xp, setXp] = useState(0);
   const [streak, setStreak] = useState(0);
   const [studyLog, setStudyLog] = useState<{ date: string; minutes: number }[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const addSubject = (subject: Omit<UserSubject, "id" | "topicList" | "completed" | "topics">) => {
-    const topicList = getTopicsForSubject(subject.name);
+  // Load data from DB when user changes
+  const loadData = useCallback(async () => {
+    if (!user) {
+      setSubjects([]);
+      setXp(0);
+      setStreak(0);
+      setStudyLog([]);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Load subjects + topics
+      const { data: subjectsData } = await supabase
+        .from("subjects")
+        .select("*")
+        .eq("user_id", user.id);
+
+      const { data: topicsData } = await supabase
+        .from("topics")
+        .select("*")
+        .eq("user_id", user.id);
+
+      if (subjectsData) {
+        const mapped: UserSubject[] = subjectsData.map((s: any) => {
+          const topicList = (topicsData || [])
+            .filter((t: any) => t.subject_id === s.id)
+            .map((t: any) => ({ id: t.id, name: t.name, completed: t.completed }));
+          return {
+            id: s.id,
+            name: s.name,
+            icon: s.icon,
+            examDate: s.exam_date,
+            hoursPerDay: s.hours_per_day,
+            topics: topicList.length,
+            completed: topicList.filter((t: Topic) => t.completed).length,
+            topicList,
+          };
+        });
+        setSubjects(mapped);
+      }
+
+      // Load XP
+      const { data: xpData } = await supabase
+        .from("xp_progress")
+        .select("*")
+        .eq("user_id", user.id)
+        .single();
+      if (xpData) {
+        setXp(xpData.xp);
+        setStreak(xpData.streak);
+      }
+
+      // Load study log
+      const { data: logData } = await supabase
+        .from("study_log")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("date", { ascending: false })
+        .limit(90);
+      if (logData) {
+        setStudyLog(logData.map((l: any) => ({ date: l.date, minutes: l.minutes })));
+      }
+    } catch (err) {
+      console.error("Failed to load data:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const addSubject = async (subject: Omit<UserSubject, "id" | "topicList" | "completed" | "topics">) => {
+    if (!user) return;
+    const topicNames = getTopicNamesForSubject(subject.name);
+
+    const { data: newSubject, error } = await supabase
+      .from("subjects")
+      .insert({
+        user_id: user.id,
+        name: subject.name,
+        icon: subject.icon,
+        exam_date: subject.examDate,
+        hours_per_day: subject.hoursPerDay,
+      })
+      .select()
+      .single();
+
+    if (error || !newSubject) {
+      console.error("Failed to add subject:", error);
+      return;
+    }
+
+    const topicRows = topicNames.map((name) => ({
+      subject_id: newSubject.id,
+      user_id: user.id,
+      name,
+      completed: false,
+    }));
+
+    const { data: newTopics } = await supabase
+      .from("topics")
+      .insert(topicRows)
+      .select();
+
+    const topicList = (newTopics || []).map((t: any) => ({
+      id: t.id,
+      name: t.name,
+      completed: t.completed,
+    }));
+
     setSubjects((prev) => [
       ...prev,
       {
-        ...subject,
-        id: crypto.randomUUID(),
-        topicList,
+        id: newSubject.id,
+        name: newSubject.name,
+        icon: newSubject.icon,
+        examDate: newSubject.exam_date,
+        hoursPerDay: newSubject.hours_per_day,
         topics: topicList.length,
         completed: 0,
+        topicList,
       },
     ]);
   };
 
-  const removeSubject = (id: string) => {
+  const removeSubject = async (id: string) => {
+    if (!user) return;
+    await supabase.from("subjects").delete().eq("id", id).eq("user_id", user.id);
     setSubjects((prev) => prev.filter((s) => s.id !== id));
   };
 
-  const updateSubject = (id: string, updates: Partial<UserSubject>) => {
+  const updateSubject = async (id: string, updates: Partial<UserSubject>) => {
+    if (!user) return;
+    const dbUpdates: any = {};
+    if (updates.name !== undefined) dbUpdates.name = updates.name;
+    if (updates.icon !== undefined) dbUpdates.icon = updates.icon;
+    if (updates.examDate !== undefined) dbUpdates.exam_date = updates.examDate;
+    if (updates.hoursPerDay !== undefined) dbUpdates.hours_per_day = updates.hoursPerDay;
+
+    if (Object.keys(dbUpdates).length > 0) {
+      await supabase.from("subjects").update(dbUpdates).eq("id", id).eq("user_id", user.id);
+    }
     setSubjects((prev) =>
       prev.map((s) => (s.id === id ? { ...s, ...updates } : s))
     );
   };
 
-  const toggleTopic = (subjectId: string, topicId: string) => {
+  const toggleTopic = async (subjectId: string, topicId: string) => {
+    if (!user) return;
+    const subject = subjects.find((s) => s.id === subjectId);
+    if (!subject) return;
+    const topic = subject.topicList.find((t) => t.id === topicId);
+    if (!topic) return;
+
+    const newCompleted = !topic.completed;
+    await supabase
+      .from("topics")
+      .update({ completed: newCompleted })
+      .eq("id", topicId)
+      .eq("user_id", user.id);
+
+    const xpDelta = newCompleted ? 25 : -25;
+    const newXp = Math.max(0, xp + xpDelta);
+    setXp(newXp);
+    await supabase
+      .from("xp_progress")
+      .update({ xp: newXp })
+      .eq("user_id", user.id);
+
     setSubjects((prev) =>
       prev.map((s) => {
         if (s.id !== subjectId) return s;
         const newTopicList = s.topicList.map((t) =>
-          t.id === topicId ? { ...t, completed: !t.completed } : t
+          t.id === topicId ? { ...t, completed: newCompleted } : t
         );
-        const completed = newTopicList.filter((t) => t.completed).length;
-        const wasCompleted = s.topicList.find((t) => t.id === topicId)?.completed;
-        if (!wasCompleted) {
-          setXp((prev) => prev + 25);
-        } else {
-          setXp((prev) => Math.max(0, prev - 25));
-        }
-        return { ...s, topicList: newTopicList, completed };
+        return {
+          ...s,
+          topicList: newTopicList,
+          completed: newTopicList.filter((t) => t.completed).length,
+        };
       })
     );
   };
 
-  const addStudyTime = (minutes: number) => {
+  const addStudyTime = async (minutes: number) => {
+    if (!user) return;
     const today = new Date().toISOString().split("T")[0];
-    setStudyLog((prev) => {
-      const existing = prev.find((l) => l.date === today);
-      if (existing) {
-        return prev.map((l) => l.date === today ? { ...l, minutes: l.minutes + minutes } : l);
-      }
-      return [...prev, { date: today, minutes }];
-    });
-    setXp((prev) => prev + Math.round(minutes * 2));
+
+    // Upsert study log
+    const existing = studyLog.find((l) => l.date === today);
+    if (existing) {
+      await supabase
+        .from("study_log")
+        .update({ minutes: existing.minutes + minutes })
+        .eq("user_id", user.id)
+        .eq("date", today);
+      setStudyLog((prev) =>
+        prev.map((l) => (l.date === today ? { ...l, minutes: l.minutes + minutes } : l))
+      );
+    } else {
+      await supabase
+        .from("study_log")
+        .insert({ user_id: user.id, date: today, minutes });
+      setStudyLog((prev) => [{ date: today, minutes }, ...prev]);
+    }
+
+    // Update XP
+    const newXp = xp + Math.round(minutes * 2);
+    setXp(newXp);
+
     // Simple streak logic
-    setStreak((prev) => {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yStr = yesterday.toISOString().split("T")[0];
-      const hadYesterday = studyLog.some((l) => l.date === yStr);
-      const hadToday = studyLog.some((l) => l.date === today);
-      if (!hadToday) return prev + 1;
-      return prev;
-    });
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yStr = yesterday.toISOString().split("T")[0];
+    const hadYesterday = studyLog.some((l) => l.date === yStr);
+    const hadToday = studyLog.some((l) => l.date === today);
+    let newStreak = streak;
+    if (!hadToday) newStreak = streak + 1;
+
+    setStreak(newStreak);
+    await supabase
+      .from("xp_progress")
+      .update({ xp: newXp, streak: newStreak })
+      .eq("user_id", user.id);
   };
 
   return (
     <SubjectsContext.Provider
-      value={{ subjects, addSubject, removeSubject, updateSubject, toggleTopic, xp, streak, studyLog, addStudyTime }}
+      value={{ subjects, addSubject, removeSubject, updateSubject, toggleTopic, xp, streak, studyLog, addStudyTime, loading }}
     >
       {children}
     </SubjectsContext.Provider>
