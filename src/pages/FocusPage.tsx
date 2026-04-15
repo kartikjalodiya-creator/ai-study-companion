@@ -72,8 +72,8 @@ export default function FocusPage() {
                 playSound("focus");
                 setIsBreak(true);
                 setMinutes(5);
-                setMinutes(5);
               } else {
+                playSound("break");
                 setIsBreak(false);
                 setMinutes(focusDuration);
               }
