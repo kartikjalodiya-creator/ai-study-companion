@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { GlassCard } from "@/components/GlassCard";
 import { Button } from "@/components/ui/button";
 import { Timer, Play, Pause, RotateCcw, Music, VolumeX, CheckCircle2 } from "lucide-react";
@@ -24,6 +24,35 @@ export default function FocusPage() {
   const [totalFocusTime, setTotalFocusTime] = useState(0);
   const [selectedSubject, setSelectedSubject] = useState<string>("general");
   const intervalRef = useRef<ReturnType<typeof setInterval>>();
+  const audioCtxRef = useRef<AudioContext | null>(null);
+
+  const playSound = useCallback((type: "focus" | "break") => {
+    try {
+      const ctx = audioCtxRef.current || new AudioContext();
+      audioCtxRef.current = ctx;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 1.2);
+
+      if (type === "focus") {
+        // Triumphant double chime for focus end
+        osc.frequency.setValueAtTime(523, ctx.currentTime);
+        osc.frequency.setValueAtTime(659, ctx.currentTime + 0.15);
+        osc.frequency.setValueAtTime(784, ctx.currentTime + 0.3);
+      } else {
+        // Gentle low tone for break end
+        osc.frequency.setValueAtTime(440, ctx.currentTime);
+        osc.frequency.setValueAtTime(523, ctx.currentTime + 0.3);
+      }
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 1.2);
+    } catch (e) {
+      console.warn("Audio not available:", e);
+    }
+  }, []);
 
   const totalSeconds = minutes * 60 + seconds;
   const maxSeconds = isBreak ? 5 * 60 : focusDuration * 60;
@@ -40,9 +69,11 @@ export default function FocusPage() {
                 setSessions((s) => s + 1);
                 setTotalFocusTime((t) => t + focusDuration);
                 addStudyTime(focusDuration);
+                playSound("focus");
                 setIsBreak(true);
                 setMinutes(5);
               } else {
+                playSound("break");
                 setIsBreak(false);
                 setMinutes(focusDuration);
               }
@@ -56,7 +87,7 @@ export default function FocusPage() {
       }, 1000);
     }
     return () => clearInterval(intervalRef.current);
-  }, [isRunning, minutes, isBreak, focusDuration, addStudyTime]);
+  }, [isRunning, minutes, isBreak, focusDuration, addStudyTime, playSound]);
 
   const reset = () => { setIsRunning(false); setMinutes(isBreak ? 5 : focusDuration); setSeconds(0); };
   const pad = (n: number) => n.toString().padStart(2, "0");
