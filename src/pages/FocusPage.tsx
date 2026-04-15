@@ -87,7 +87,7 @@ export default function FocusPage() {
       }, 1000);
     }
     return () => clearInterval(intervalRef.current);
-  }, [isRunning, minutes, isBreak, focusDuration, addStudyTime]);
+  }, [isRunning, minutes, isBreak, focusDuration, addStudyTime, playSound]);
 
   const reset = () => { setIsRunning(false); setMinutes(isBreak ? 5 : focusDuration); setSeconds(0); };
   const pad = (n: number) => n.toString().padStart(2, "0");
