@@ -69,7 +69,9 @@ export default function FocusPage() {
                 setSessions((s) => s + 1);
                 setTotalFocusTime((t) => t + focusDuration);
                 addStudyTime(focusDuration);
+                playSound("focus");
                 setIsBreak(true);
+                setMinutes(5);
                 setMinutes(5);
               } else {
                 setIsBreak(false);
